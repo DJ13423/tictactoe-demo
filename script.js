@@ -216,3 +216,8 @@ async function updateRoomCounts() {
 
 // Initialize rooms when page loads
 initializeRooms();
+
+// Add event listener for leave button
+document.getElementById('leaveButton').addEventListener('click', () => {
+    showPopupAndReturnToMenu("You left the game");
+});

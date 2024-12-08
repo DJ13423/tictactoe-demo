@@ -85,6 +85,21 @@
         .game-container {
             display: none;
         }
+
+        .leave-button {
+            padding: 10px 20px;
+            font-size: 18px;
+            cursor: pointer;
+            background-color: #f44336;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+
+        .leave-button:hover {
+            background-color: #da190b;
+        }
     </style>
 </head>
 <body>
@@ -106,6 +121,7 @@
             <div class="cell" data-index="7"></div>
             <div class="cell" data-index="8"></div>
         </div>
+        <button class="leave-button" id="leaveButton">Leave Game</button>
     </div>
 
     <script src="kometApi.js"></script>
