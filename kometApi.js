@@ -155,4 +155,4 @@ class Broadcast {
     }
 }
 
-export default { Client }
+window.KometAPI = { Client }
