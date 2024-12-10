@@ -5,6 +5,7 @@ let isMyTurn = false;
 let gameBoard = ['', '', '', '', '', '', '', '', ''];
 let gameActive = false;
 let justSentJoin = false;
+let playerCountInterval = null;
 
 const winningCombinations = [
     [0, 1, 2], [3, 4, 5], [6, 7, 8], // Rows
@@ -64,12 +65,16 @@ async function joinRoom(roomNumber) {
         // Set initial game state based on player count
         if (count === 0) {
             isMyTurn = true;
-            document.getElementById('status').textContent = "Waiting for opponent...";
+            gameActive = false; // Don't allow moves until second player joins
+            document.getElementById('status').textContent = "Waiting for opponent to join...";
         } else {
             isMyTurn = false;
             gameActive = true;
             document.getElementById('status').textContent = "Opponent's turn (O)";
         }
+
+        // Start checking player count
+        startPlayerCountCheck(roomNumber);
     });
     
     broadcast.addEventListener('message', handleMessage);
@@ -94,9 +99,7 @@ function handleMessage(event) {
             }
             if (!gameActive) {
                 isMyTurn = true;
-                gameActive = true;
-                document.getElementById('roomList').style.display = 'none';
-                document.querySelector('.game-container').style.display = 'flex';
+                gameActive = true; // Now enable moves as second player has joined
                 document.getElementById('status').textContent = "Your turn (X)";
             }
             break;
@@ -104,10 +107,10 @@ function handleMessage(event) {
         case 'room_status':
             if (message.players === 1) {
                 isMyTurn = true;
-                document.getElementById('status').textContent = "Waiting for opponent...";
-                gameActive = false;
+                gameActive = false; // Disable moves if only one player
+                document.getElementById('status').textContent = "Waiting for opponent to join...";
             } else if (message.players === 2) {
-                gameActive = true;
+                gameActive = true; // Enable moves when two players
                 document.getElementById('roomList').style.display = 'none';
                 document.querySelector('.game-container').style.display = 'flex';
                 if (isMyTurn) {
@@ -121,6 +124,26 @@ function handleMessage(event) {
         case 'move':
             handleOpponentMove(message.index);
             break;
+
+        // case 'game_over':
+        //     gameActive = false;
+        //     setTimeout(() => {
+        //         let resultMessage;
+        //         if (message.result === 'X_wins') {
+        //             resultMessage = isMyTurn ? "Opponent wins!" : "You win!";
+        //         } else if (message.result === 'O_wins') {
+        //             resultMessage = isMyTurn ? "You win!" : "Opponent wins!";
+        //         } else {
+        //             resultMessage = "It's a draw!";
+        //         }
+        //         showPopupAndReturnToMenu(resultMessage);
+        //         // Disconnect after showing the result
+        //         if (broadcast) {
+        //             broadcast.disconnect();
+        //             broadcast = null;
+        //         }
+        //     }, 500);
+        //     break;
     }
 }
 
@@ -131,7 +154,10 @@ document.querySelectorAll('.cell').forEach(cell => {
 function handleCellClick(cell) {
     const index = cell.getAttribute('data-index');
 
-    if (gameBoard[index] === '' && gameActive && isMyTurn) {
+    // Only allow moves if it's the player's turn AND game is active AND there are 2 players
+    if (gameBoard[index] === '' && 
+        gameActive && 
+        isMyTurn) {
         makeMove(index, 'X');
         broadcast.send(JSON.stringify({
             type: 'move',
@@ -142,7 +168,31 @@ function handleCellClick(cell) {
 
 function handleOpponentMove(index) {
     if (gameBoard[index] === '' && gameActive) {
-        makeMove(index, 'O');
+        gameBoard[index] = 'O';
+        document.querySelector(`[data-index="${index}"]`).textContent = 'O';
+        
+        if (checkWin()) {
+            gameActive = false;
+            setTimeout(() => {
+                showPopupAndReturnToMenu("You lost!");
+                if (broadcast) {
+                    broadcast.disconnect();
+                    broadcast = null;
+                }
+            }, 500);
+        } else if (checkDraw()) {
+            gameActive = false;
+            setTimeout(() => {
+                showPopupAndReturnToMenu("It's a draw!");
+                if (broadcast) {
+                    broadcast.disconnect();
+                    broadcast = null;
+                }
+            }, 500);
+        } else {
+            isMyTurn = !isMyTurn;
+            document.getElementById('status').textContent = "Your turn (X)";
+        }
     }
 }
 
@@ -150,15 +200,26 @@ function makeMove(index, symbol) {
     gameBoard[index] = symbol;
     document.querySelector(`[data-index="${index}"]`).textContent = symbol;
     
-    if (checkWin()) {
+    if (symbol === 'X' && checkWin()) {
+        console.log("I won!")
         gameActive = false;
         setTimeout(() => {
-            showPopupAndReturnToMenu(symbol === 'X' ? "You win!" : "Opponent wins!");
+            showPopupAndReturnToMenu("You win!");
+            // Disconnect immediately after win
+            if (broadcast) {
+                broadcast.disconnect();
+                broadcast = null;
+            }
         }, 500);
     } else if (checkDraw()) {
         gameActive = false;
         setTimeout(() => {
             showPopupAndReturnToMenu("It's a draw!");
+            // Disconnect immediately after draw
+            if (broadcast) {
+                broadcast.disconnect();
+                broadcast = null;
+            }
         }, 500);
     } else {
         isMyTurn = !isMyTurn;
@@ -180,6 +241,12 @@ function checkDraw() {
 }
 
 function showPopupAndReturnToMenu(message) {
+    // Clear the player count check interval
+    if (playerCountInterval) {
+        clearInterval(playerCountInterval);
+        playerCountInterval = null;
+    }
+    
     alert(message);
     // Reset game state
     gameBoard = ['', '', '', '', '', '', '', '', ''];
@@ -212,6 +279,22 @@ async function updateRoomCounts() {
         countElement.textContent = `${count}/2`;
         joinButton.disabled = count >= 2;
     }
+}
+
+// Add this function to check player count while in room
+async function startPlayerCountCheck(roomNumber) {
+    // Clear any existing interval
+    if (playerCountInterval) {
+        clearInterval(playerCountInterval);
+    }
+    
+    playerCountInterval = setInterval(async () => {
+        const count = await getRoomCount(roomNumber);
+        if (count < 2 && gameActive) {
+            showPopupAndReturnToMenu("Opponent left the game!");
+            clearInterval(playerCountInterval);
+        }
+    }, 1000); // Check every second
 }
 
 // Initialize rooms when page loads
